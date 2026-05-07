@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>中国象棋 · 蓝高亮10秒 · 悔棋各退5步</title>
+  <title>中国象棋 · 蓝高亮10秒 · 悔棋各退5步 · 竖屏按钮并排</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
     body {
@@ -41,6 +41,25 @@
     }
     .action-btn:disabled {
       opacity: 0.5; transform: none; box-shadow: 0 4px 0 #6f4f2e; cursor: not-allowed;
+    }
+
+    /* 竖屏 / 窄屏适配 */
+    @media (max-width: 800px), (orientation: portrait) {
+      .right-panel {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+      }
+      .turn-indicator {
+        width: 100%;          /* 状态文字独占一行 */
+      }
+      .mode-selector, .difficulty-selector, .action-btn {
+        width: auto;
+        flex: 1 1 calc(50% - 10px); /* 两列并排 */
+        min-width: 120px;
+        max-width: 200px;
+      }
     }
   </style>
 </head>
@@ -82,19 +101,17 @@
   let selectedPiece = null;
   let gameOver = false, winner = null;
   let history = [];
-  let undoCount = 0;                 // 已使用的悔棋次数
-  const MAX_UNDO = 5;               // 最多悔棋5步（各退5步）
+  let undoCount = 0;
+  const MAX_UNDO = 5;
 
   let gameMode = 'ai-black';
   let aiDifficulty = 2;
   let isAIPlaying = false;
 
-  // AI 走子高亮（蓝色，持续10秒）
   let lastMoveInfo = null;
   let highlightTimer = null;
 
-  const MAX_HISTORY = 30;           // 保留足够历史记录
-
+  const MAX_HISTORY = 30;
   const MAX_DEPTH = 10;
   let killerMoves = [];
   function initKillers() {
@@ -107,7 +124,6 @@
     'k':10000, 'a':200, 'b':200, 'n':500, 'r':1000, 'c':800, 'p':100
   };
 
-  // ---------- 自适应 (窄边距) ----------
   function resizeCanvas() {
     const marginX = 0.6, marginY = 0.6;
     const maxW = window.innerWidth * 0.9, maxH = window.innerHeight * 0.95;
@@ -124,7 +140,6 @@
   }
   window.addEventListener('resize', resizeCanvas);
 
-  // ---------- 初始化棋盘 ----------
   function initBoard() {
     board = Array(ROWS).fill().map(()=>Array(COLS).fill(null));
     board[0][0]='br'; board[0][1]='bn'; board[0][2]='bb'; board[0][3]='ba'; board[0][4]='bk';
@@ -152,7 +167,6 @@
     undoBtn.disabled = (left <= 0);
   }
 
-  // ---------- 蓝色高亮，持续10秒 ----------
   function setMoveHighlight(fromX, fromY, toX, toY) {
     lastMoveInfo = { fromX, fromY, toX, toY, time: Date.now() };
     if (highlightTimer) clearTimeout(highlightTimer);
@@ -160,7 +174,7 @@
       lastMoveInfo = null;
       drawBoard();
       highlightTimer = null;
-    }, 10000); // 10秒
+    }, 10000);
   }
 
   function clearHighlight() {
@@ -168,7 +182,6 @@
     if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
   }
 
-  // ---------- 绘制 ----------
   function drawBoard() {
     if (!canvas.width) return;
     ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -193,12 +206,10 @@
     const radius = GRID_SIZE * 0.48;
     ctx.save();
     ctx.globalAlpha = 0.45;
-    // 起点：浅蓝
     ctx.fillStyle = '#ADD8E6';
     ctx.beginPath();
     ctx.arc(OFFSET_X + fromY*GRID_SIZE, OFFSET_Y + fromX*GRID_SIZE, radius, 0, 2*Math.PI);
     ctx.fill();
-    // 终点：亮蓝
     ctx.fillStyle = '#1E90FF';
     ctx.beginPath();
     ctx.arc(OFFSET_X + toY*GRID_SIZE, OFFSET_Y + toX*GRID_SIZE, radius, 0, 2*Math.PI);
@@ -229,7 +240,7 @@
     const centerY = OFFSET_Y + 4.5*GRID_SIZE;
     const centerX = OFFSET_X + 4*GRID_SIZE;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('  楚 河  　 汉 界  ', centerX, centerY);
+    ctx.fillText('  楚 河    　汉 界  ', centerX, centerY);
     ctx.globalAlpha = 1; ctx.textAlign = 'start';
     ctx.beginPath(); ctx.moveTo(OFFSET_X+3*GRID_SIZE, OFFSET_Y); ctx.lineTo(OFFSET_X+5*GRID_SIZE, OFFSET_Y+2*GRID_SIZE); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(OFFSET_X+5*GRID_SIZE, OFFSET_Y); ctx.lineTo(OFFSET_X+3*GRID_SIZE, OFFSET_Y+2*GRID_SIZE); ctx.stroke();
@@ -268,7 +279,6 @@
     return map[p[0]][p[1]] || '?';
   }
 
-  // ---------- 规则与AI ----------
   function getPieceRawMoves(boardState, row, col, piece) {
     const color = piece[0]; const type = piece[1]; const moves = [];
     if (type==='k') {
@@ -509,7 +519,6 @@
     }, 150);
   }
 
-  // ---------- 玩家交互 ----------
   function handleCanvasClick(e) {
     if (gameOver) return;
     const isAI = (gameMode==='ai-black'&&currentPlayer==='b')||(gameMode==='ai-red'&&currentPlayer==='r');
@@ -565,16 +574,12 @@
     drawBoard();
   }
 
-  // 悔棋：各退一步 (撤销AI步+玩家步)
   function undoMove() {
     if (gameOver || isAIPlaying) return;
-    // 需要轮到玩家走棋 且 历史记录至少2条 (AI步+玩家步)
     if (history.length < 2) return;
     if (undoCount >= MAX_UNDO) return;
 
-    // 弹出AI步
     history.pop();
-    // 弹出玩家步
     const playerMove = history.pop();
     board = playerMove.board.map(r=>r.map(c=>c));
     currentPlayer = playerMove.currentPlayer;
@@ -586,8 +591,6 @@
     updateUndoButton();
     clearHighlight();
     drawBoard();
-
-    // 悔棋后轮到玩家，不需要AI走
   }
 
   function restartGame() {
