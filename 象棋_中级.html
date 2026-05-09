@@ -65,11 +65,12 @@
       <option value="human">双人对战</option>
     </select>
     <select id="difficultySelect" class="difficulty-selector">
-      <option value="1">🤖入门 (1层)</option>
-      <option value="2">🤖小白 (2层)</option>
-      <option value="3" selected>🤖菜鸟 (3层)</option>
-      <option value="4">🤖初级 (4层)</option>
-      <option value="5">🤖中级 (5层)</option>
+      <option value="0">🤖入门</option>
+      <option value="1">🤖小白</option>
+      <option value="2">🤖菜鸟</option>
+      <option value="3" selected>🤖准初级</option>
+      <option value="4">🤖初级</option>
+      <option value="5">🤖中级</option>
     </select>
     <button class="action-btn" id="undoBtn">悔棋(剩5步)</button>
     <button class="action-btn restart-btn" id="restartBtn">新局</button>
@@ -98,7 +99,7 @@
   const MAX_UNDO = 5;
 
   let gameMode = 'ai-black';
-  let aiDifficulty = 3;           // 默认 (3层)
+  let aiDifficulty = 3;           // 默认准初级
   let isAIPlaying = false;
 
   let lastMoveInfo = null;
@@ -119,9 +120,7 @@
     if (!audioCtx) {
       try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return; }
     }
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
     const now = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -138,6 +137,110 @@
   const pieceValue = {
     'k':10000, 'a':200, 'b':200, 'n':500, 'r':1000, 'c':800, 'p':100
   };
+
+  // ---------- 增强位置评估 (用于准高级) ----------
+  function getEnhancedPositionBonus(player, type, row, col) {
+    let progression = (player === 'r') ? (9 - row) : row; // 前进值（0底线，9对方底线）
+    let bonus = 0;
+    switch (type) {
+      case 'r': // 车
+        if (progression >= 5) { // 过河
+          bonus += 20;
+          if (col === 4) bonus += 20; // 中路车
+          if (col === 0 || col === 8) bonus += 10; // 边车过河也强
+        }
+        // 占据开放线
+        if (col >= 3 && col <= 5 && progression < 3) bonus += 8;
+        break;
+      case 'n': // 马
+        if (progression >= 3 && progression <= 6) {
+          if (col >= 3 && col <= 5) bonus += 30; // 中心马
+          else bonus += 15;
+        } else if (col <= 1 || col >= 7) {
+          bonus -= 12; // 边马呆滞
+        }
+        break;
+      case 'c': // 炮
+        if (progression >= 5) bonus += 12;
+        if (col === 4) bonus += 15; // 中炮
+        if ((col === 1 || col === 7) && progression >= 4) bonus += 10; // 巡河炮
+        break;
+      case 'p': // 兵
+        if (progression >= 5) { // 过河
+          bonus += 35;
+          if (col === 4) bonus += 20;
+          else if (col === 3 || col === 5) bonus += 10;
+        } else {
+          if (col >= 3 && col <= 5 && progression >= 3) bonus += 10; // 中路兵即将过河
+        }
+        break;
+      default:
+        break;
+    }
+    return bonus;
+  }
+
+  // ---------- 将安全评估 (用于准高级) ----------
+  function evaluateKingSafety(boardState, color) {
+    let kingPos = null;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const p = boardState[r][c];
+        if (p && p[0] === color && p[1] === 'k') {
+          kingPos = {r, c};
+          break;
+        }
+      }
+    }
+    if (!kingPos) return -1000; // 将被吃，严重惩罚
+
+    let safety = 0;
+    const {r: kr, c: kc} = kingPos;
+    const opponent = color === 'r' ? 'b' : 'r';
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+
+    // 检查士象保护
+    const protectPieces = ['a', 'b'];
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const nr = kr + dr, nc = kc + dc;
+        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+          const p = boardState[nr][nc];
+          if (p && p[0] === color && protectPieces.includes(p[1])) {
+            safety += 20; // 有士象保护
+          }
+        }
+      }
+    }
+
+    // 将暴露在同列威胁下检查
+    for (let [dx, dy] of dirs) {
+      let r = kr + dx, c = kc + dy;
+      let pieceCount = 0;
+      while (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+        const p = boardState[r][c];
+        if (p) {
+          if (p[0] === opponent) {
+            if (p[1] === 'r' && pieceCount === 0) {
+              safety -= 80; // 同列有对方车且无遮挡
+            } else if (p[1] === 'c' && pieceCount === 1) {
+              safety -= 80; // 炮架 + 炮
+            }
+            // 遇到任何对方子，停止检查该方向
+            break;
+          } else { // 己方或对方其他子，都算遮挡
+            pieceCount++;
+            if (pieceCount > 1) break; // 多层遮挡，停止
+          }
+        }
+        r += dx;
+        c += dy;
+      }
+    }
+
+    return safety;
+  }
 
   function resizeCanvas() {
     const marginX = 0.6, marginY = 0.6;
@@ -189,7 +292,7 @@
       lastMoveInfo = null;
       drawBoard();
       highlightTimer = null;
-    }, 5000);
+    }, 10000);
   }
 
   function clearHighlight() {
@@ -281,7 +384,6 @@
       ctx.shadowBlur=0; ctx.shadowOffsetY=0;
       ctx.font=`bold ${fontSize}px "楷体","KaiTi","华文楷体",serif`;
       ctx.fillStyle='#FFFFFF'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      // 字体完全居中，不再额外偏移
       ctx.fillText(pieceToChinese(p), x, y);
       ctx.restore();
     }
@@ -295,6 +397,7 @@
     return map[p[0]][p[1]] || '?';
   }
 
+  // ---------- 走法生成、规则检验 ----------
   function getPieceRawMoves(boardState, row, col, piece) {
     const color = piece[0]; const type = piece[1]; const moves = [];
     if (type==='k') {
@@ -419,20 +522,38 @@
     return moves;
   }
 
-  function evaluateBoard(boardState, perspective) {
-    let score=0;
-    for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
-      const p=boardState[r][c]; if (!p) continue;
-      score += p[0]===perspective ? (pieceValue[p[1]]||0) : -(pieceValue[p[1]]||0);
+  function evaluateBoard(boardState, perspective, usePositional = false) {
+    let score = 0;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const p = boardState[r][c];
+        if (!p) continue;
+        const val = pieceValue[p[1]] || 0;
+        let posBonus = 0;
+        if (usePositional && p[1] !== 'k' && p[1] !== 'a' && p[1] !== 'b') {
+          posBonus = getEnhancedPositionBonus(p[0], p[1], r, c);
+        }
+        if (p[0] === perspective) {
+          score += val + posBonus;
+        } else {
+          score -= val + posBonus;
+        }
+      }
+    }
+    // 将安全评估 (仅当准高级时)
+    if (usePositional) {
+      const opponent = perspective === 'r' ? 'b' : 'r';
+      score += evaluateKingSafety(boardState, perspective);
+      score -= evaluateKingSafety(boardState, opponent);
     }
     return score;
   }
 
-  function alphaBeta(boardState, depth, alpha, beta, maximizing, aiColor, currentDepth) {
+  function alphaBeta(boardState, depth, alpha, beta, maximizing, aiColor, currentDepth, usePositional = false) {
     const curColor = maximizing ? aiColor : (aiColor==='r'?'b':'r');
     const moves = getAllValidMoves(boardState, curColor);
-    if (moves.length===0) return maximizing ? -Infinity : Infinity;
-    if (depth===0) return evaluateBoard(boardState, aiColor);
+    if (moves.length === 0) return maximizing ? -Infinity : Infinity;
+    if (depth === 0) return evaluateBoard(boardState, aiColor, usePositional);
 
     const killers = killerMoves[currentDepth] || [null, null];
     moves.sort((a,b)=>{
@@ -450,7 +571,7 @@
       let maxEval = -Infinity;
       for (let m of moves) {
         const nb = applyMove(boardState, m.fromX, m.fromY, m.toX, m.toY);
-        const val = alphaBeta(nb, depth-1, alpha, beta, false, aiColor, currentDepth+1);
+        const val = alphaBeta(nb, depth-1, alpha, beta, false, aiColor, currentDepth+1, usePositional);
         maxEval = Math.max(maxEval, val); alpha = Math.max(alpha, val);
         if (beta <= alpha) {
           if (m.targetValue===0) {
@@ -466,7 +587,7 @@
       let minEval = Infinity;
       for (let m of moves) {
         const nb = applyMove(boardState, m.fromX, m.fromY, m.toX, m.toY);
-        const val = alphaBeta(nb, depth-1, alpha, beta, true, aiColor, currentDepth+1);
+        const val = alphaBeta(nb, depth-1, alpha, beta, true, aiColor, currentDepth+1, usePositional);
         minEval = Math.min(minEval, val); beta = Math.min(beta, val);
         if (beta <= alpha) {
           if (m.targetValue===0) {
@@ -481,14 +602,14 @@
     }
   }
 
-  function getBestMove(boardState, color, depth) {
+  function getBestMove(boardState, color, depth, usePositional = false) {
     initKillers();
     const moves = getAllValidMoves(boardState, color);
-    if (moves.length===0) return null;
+    if (moves.length === 0) return null;
     let best = [], bestScore = -Infinity;
     for (let m of moves) {
       const nb = applyMove(boardState, m.fromX, m.fromY, m.toX, m.toY);
-      const score = alphaBeta(nb, depth-1, -Infinity, Infinity, false, color, 0);
+      const score = alphaBeta(nb, depth-1, -Infinity, Infinity, false, color, 0, usePositional);
       if (score > bestScore) { bestScore=score; best=[m]; }
       else if (score===bestScore) best.push(m);
     }
@@ -502,7 +623,15 @@
     isAIPlaying = true;
     setTimeout(()=>{
       if (gameOver) { isAIPlaying=false; return; }
-      const move = getBestMove(board, color, aiDifficulty);
+
+      let searchDepth = aiDifficulty;
+      let usePos = false;
+      if (aiDifficulty === 6) {
+        searchDepth = 3;
+        usePos = true;   // 启用增强评估 (位置+将安全)
+      }
+
+      const move = getBestMove(board, color, searchDepth, usePos);
       if (!move) {
         gameOver=true; winner = (color==='r'?'b':'r');
         turnText.innerText = (winner==='r'?'红方胜':'黑方胜');
@@ -527,7 +656,6 @@
       setMoveHighlight(fromX, fromY, toX, toY);
       drawBoard();
 
-      // 黑方走棋时播放音效
       if (color === 'b') playSound();
 
       if (!gameOver) {
@@ -567,7 +695,7 @@
         }
       }
       if (valid) {
-        const movingPlayer = currentPlayer; // 记录走子方
+        const movingPlayer = currentPlayer;
         const boardCopy = board.map(r=>r.map(c=>c));
         history.push({ board:boardCopy, currentPlayer });
         if (history.length > MAX_HISTORY) history.shift();
@@ -584,7 +712,6 @@
         selectedPiece = null;
         drawBoard();
 
-        // 如果走的是黑方，播放音效
         if (movingPlayer === 'b') playSound();
 
         if (!gameOver) {
@@ -628,7 +755,9 @@
   undoBtn.addEventListener('click', undoMove);
   restartBtn.addEventListener('click', restartGame);
   modeSelect.addEventListener('change', (e)=>{ gameMode=e.target.value; restartGame(); });
-  difficultySelect.addEventListener('change', (e)=>{ aiDifficulty=parseInt(e.target.value); });
+  difficultySelect.addEventListener('change', (e)=>{
+    aiDifficulty = parseInt(e.target.value);
+  });
 
   initBoard();
   resizeCanvas();
