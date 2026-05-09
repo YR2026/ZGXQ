@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>中国象棋 · 深度可调至5层</title>
+  <title>中国象棋【音效】</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
     body {
@@ -98,14 +98,14 @@
   const MAX_UNDO = 5;
 
   let gameMode = 'ai-black';
-  let aiDifficulty = 4;           // 默认初级 (4层)
+  let aiDifficulty = 4;           // 默认高级 (4层)
   let isAIPlaying = false;
 
   let lastMoveInfo = null;
   let highlightTimer = null;
 
   const MAX_HISTORY = 30;
-  const MAX_DEPTH = 10;          // 实际深度由 aiDifficulty 控制，此值为安全上限
+  const MAX_DEPTH = 10;
   let killerMoves = [];
   function initKillers() {
     killerMoves = [];
@@ -113,12 +113,32 @@
   }
   initKillers();
 
-  // 棋子基础价值
+  // ---------- 音效系统 ----------
+  let audioCtx = null;
+  function playSound() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return; }
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = 800 + Math.random() * 400;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.08);
+  }
+
   const pieceValue = {
     'k':10000, 'a':200, 'b':200, 'n':500, 'r':1000, 'c':800, 'p':100
   };
 
-  // ---------- 自适应 ----------
   function resizeCanvas() {
     const marginX = 0.6, marginY = 0.6;
     const maxW = window.innerWidth * 0.9, maxH = window.innerHeight * 0.95;
@@ -135,7 +155,6 @@
   }
   window.addEventListener('resize', resizeCanvas);
 
-  // ---------- 初始化棋盘 ----------
   function initBoard() {
     board = Array(ROWS).fill().map(()=>Array(COLS).fill(null));
     board[0][0]='br'; board[0][1]='bn'; board[0][2]='bb'; board[0][3]='ba'; board[0][4]='bk';
@@ -163,7 +182,6 @@
     undoBtn.disabled = (left <= 0);
   }
 
-  // ---------- 高亮（蓝色15秒） ----------
   function setMoveHighlight(fromX, fromY, toX, toY) {
     lastMoveInfo = { fromX, fromY, toX, toY, time: Date.now() };
     if (highlightTimer) clearTimeout(highlightTimer);
@@ -171,7 +189,7 @@
       lastMoveInfo = null;
       drawBoard();
       highlightTimer = null;
-    }, 15000);
+    }, 10000);
   }
 
   function clearHighlight() {
@@ -179,7 +197,6 @@
     if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
   }
 
-  // ---------- 绘制 ----------
   function drawBoard() {
     if (!canvas.width) return;
     ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -264,7 +281,8 @@
       ctx.shadowBlur=0; ctx.shadowOffsetY=0;
       ctx.font=`bold ${fontSize}px "楷体","KaiTi","华文楷体",serif`;
       ctx.fillStyle='#FFFFFF'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(pieceToChinese(p), x, y+fontSize*0.1);
+      // 字体完全居中，不再额外偏移
+      ctx.fillText(pieceToChinese(p), x, y);
       ctx.restore();
     }
   }
@@ -277,7 +295,6 @@
     return map[p[0]][p[1]] || '?';
   }
 
-  // ---------- 走法生成 ----------
   function getPieceRawMoves(boardState, row, col, piece) {
     const color = piece[0]; const type = piece[1]; const moves = [];
     if (type==='k') {
@@ -411,7 +428,6 @@
     return score;
   }
 
-  // ---------- Alpha-Beta 搜索 (深度由 aiDifficulty 控制) ----------
   function alphaBeta(boardState, depth, alpha, beta, maximizing, aiColor, currentDepth) {
     const curColor = maximizing ? aiColor : (aiColor==='r'?'b':'r');
     const moves = getAllValidMoves(boardState, curColor);
@@ -511,6 +527,9 @@
       setMoveHighlight(fromX, fromY, toX, toY);
       drawBoard();
 
+      // 黑方走棋时播放音效
+      if (color === 'b') playSound();
+
       if (!gameOver) {
         const nextAI = (gameMode==='ai-black'&&currentPlayer==='b')||(gameMode==='ai-red'&&currentPlayer==='r');
         if (nextAI) setTimeout(()=>aiMakeMove(currentPlayer), 150);
@@ -548,21 +567,26 @@
         }
       }
       if (valid) {
+        const movingPlayer = currentPlayer; // 记录走子方
         const boardCopy = board.map(r=>r.map(c=>c));
         history.push({ board:boardCopy, currentPlayer });
         if (history.length > MAX_HISTORY) history.shift();
 
         const piece = board[sr][sc];
         board[row][col] = piece; board[sr][sc] = null;
-        const enemy = currentPlayer==='r'?'b':'r';
+        const enemy = movingPlayer==='r'?'b':'r';
         let kingAlive = false;
         for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
           if (board[r][c]&&board[r][c][0]===enemy&&board[r][c][1]==='k') kingAlive=true;
         }
-        if (!kingAlive) { gameOver=true; winner=currentPlayer; turnText.innerText = (winner==='r'?'红方胜':'黑方胜'); }
+        if (!kingAlive) { gameOver=true; winner=movingPlayer; turnText.innerText = (winner==='r'?'红方胜':'黑方胜'); }
         else { currentPlayer = enemy; turnText.innerText = currentPlayer==='r'?'红方走棋':'黑方走棋'; }
         selectedPiece = null;
         drawBoard();
+
+        // 如果走的是黑方，播放音效
+        if (movingPlayer === 'b') playSound();
+
         if (!gameOver) {
           const nextAI = (gameMode==='ai-black'&&currentPlayer==='b')||(gameMode==='ai-red'&&currentPlayer==='r');
           if (nextAI) setTimeout(()=>aiMakeMove(currentPlayer), 200);
