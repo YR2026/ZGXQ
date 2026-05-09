@@ -67,8 +67,8 @@
     <select id="difficultySelect" class="difficulty-selector">
       <option value="1">🤖入门 (1层)</option>
       <option value="2">🤖小白 (2层)</option>
-      <option value="3">🤖菜鸟 (3层)</option>
-      <option value="4" selected>🤖初级 (4层)</option>
+      <option value="3" selected>🤖菜鸟 (3层)</option>
+      <option value="4">🤖初级 (4层)</option>
       <option value="5">🤖中级 (5层)</option>
     </select>
     <button class="action-btn" id="undoBtn">悔棋(剩5步)</button>
@@ -98,7 +98,7 @@
   const MAX_UNDO = 5;
 
   let gameMode = 'ai-black';
-  let aiDifficulty = 4;           // 默认高级 (4层)
+  let aiDifficulty = 3;           // 默认 (3层)
   let isAIPlaying = false;
 
   let lastMoveInfo = null;
