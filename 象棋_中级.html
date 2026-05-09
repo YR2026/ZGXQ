@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>中国象棋 · 蓝高亮10秒 · 悔棋各退5步 · 竖屏按钮并排</title>
+  <title>中国象棋 · 深度可调至5层</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
     body {
@@ -43,22 +43,13 @@
       opacity: 0.5; transform: none; box-shadow: 0 4px 0 #6f4f2e; cursor: not-allowed;
     }
 
-    /* 竖屏 / 窄屏适配 */
     @media (max-width: 800px), (orientation: portrait) {
       .right-panel {
-        flex-direction: row;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 10px;
+        flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 10px;
       }
-      .turn-indicator {
-        width: 100%;          /* 状态文字独占一行 */
-      }
+      .turn-indicator { width: 100%; }
       .mode-selector, .difficulty-selector, .action-btn {
-        width: auto;
-        flex: 1 1 calc(50% - 10px); /* 两列并排 */
-        min-width: 120px;
-        max-width: 200px;
+        width: auto; flex: 1 1 calc(50% - 10px); min-width: 120px; max-width: 200px;
       }
     }
   </style>
@@ -74,11 +65,13 @@
       <option value="human">双人对战</option>
     </select>
     <select id="difficultySelect" class="difficulty-selector">
-      <option value="1">🤖初级1层</option>
-      <option value="2">🤖中级2层</option>
-      <option value="3" selected>🤖高级3层</option>
+      <option value="1">🤖入门 (1层)</option>
+      <option value="2">🤖小白 (2层)</option>
+      <option value="3">🤖菜鸟 (3层)</option>
+      <option value="4" selected>🤖初级 (4层)</option>
+      <option value="5">🤖中级 (5层)</option>
     </select>
-    <button class="action-btn" id="undoBtn">悔棋 (剩5步)</button>
+    <button class="action-btn" id="undoBtn">悔棋(剩5步)</button>
     <button class="action-btn restart-btn" id="restartBtn">新局</button>
   </div>
 </div>
@@ -105,14 +98,14 @@
   const MAX_UNDO = 5;
 
   let gameMode = 'ai-black';
-  let aiDifficulty = 3;
+  let aiDifficulty = 4;           // 默认初级 (4层)
   let isAIPlaying = false;
 
   let lastMoveInfo = null;
   let highlightTimer = null;
 
   const MAX_HISTORY = 30;
-  const MAX_DEPTH = 10;
+  const MAX_DEPTH = 10;          // 实际深度由 aiDifficulty 控制，此值为安全上限
   let killerMoves = [];
   function initKillers() {
     killerMoves = [];
@@ -120,10 +113,12 @@
   }
   initKillers();
 
+  // 棋子基础价值
   const pieceValue = {
     'k':10000, 'a':200, 'b':200, 'n':500, 'r':1000, 'c':800, 'p':100
   };
 
+  // ---------- 自适应 ----------
   function resizeCanvas() {
     const marginX = 0.6, marginY = 0.6;
     const maxW = window.innerWidth * 0.9, maxH = window.innerHeight * 0.95;
@@ -140,6 +135,7 @@
   }
   window.addEventListener('resize', resizeCanvas);
 
+  // ---------- 初始化棋盘 ----------
   function initBoard() {
     board = Array(ROWS).fill().map(()=>Array(COLS).fill(null));
     board[0][0]='br'; board[0][1]='bn'; board[0][2]='bb'; board[0][3]='ba'; board[0][4]='bk';
@@ -163,10 +159,11 @@
 
   function updateUndoButton() {
     const left = MAX_UNDO - undoCount;
-    undoBtn.textContent = `悔棋 (剩${left}步)`;
+    undoBtn.textContent = `悔棋(剩${left}步)`;
     undoBtn.disabled = (left <= 0);
   }
 
+  // ---------- 高亮（蓝色15秒） ----------
   function setMoveHighlight(fromX, fromY, toX, toY) {
     lastMoveInfo = { fromX, fromY, toX, toY, time: Date.now() };
     if (highlightTimer) clearTimeout(highlightTimer);
@@ -174,7 +171,7 @@
       lastMoveInfo = null;
       drawBoard();
       highlightTimer = null;
-    }, 10000);
+    }, 15000);
   }
 
   function clearHighlight() {
@@ -182,6 +179,7 @@
     if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
   }
 
+  // ---------- 绘制 ----------
   function drawBoard() {
     if (!canvas.width) return;
     ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -279,6 +277,7 @@
     return map[p[0]][p[1]] || '?';
   }
 
+  // ---------- 走法生成 ----------
   function getPieceRawMoves(boardState, row, col, piece) {
     const color = piece[0]; const type = piece[1]; const moves = [];
     if (type==='k') {
@@ -412,6 +411,7 @@
     return score;
   }
 
+  // ---------- Alpha-Beta 搜索 (深度由 aiDifficulty 控制) ----------
   function alphaBeta(boardState, depth, alpha, beta, maximizing, aiColor, currentDepth) {
     const curColor = maximizing ? aiColor : (aiColor==='r'?'b':'r');
     const moves = getAllValidMoves(boardState, curColor);
