@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>中国象棋【音效】</title>
+  <title>中国象棋【音效版】</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
     body {
@@ -23,7 +23,7 @@
     }
     .turn-indicator {
       background: #fafa37; color: #0000FF; padding: 8px 12px; border-radius: 50px; font-size: 50px;
-      font-weight: bold;letter-spacing: 2px; box-shadow: inset 0 -3px 0 #2f1f0e, 0 6px 10px black;
+      font-weight: bold; letter-spacing: 2px; box-shadow: inset 0 -3px 0 #2f1f0e, 0 6px 10px black;
       border-bottom: 2px solid #b5914c; width: 100%; text-align: center; margin-bottom: 5px;
     }
     .mode-selector, .difficulty-selector {
@@ -32,7 +32,7 @@
       cursor: pointer; outline: none; width: 100%; text-align: center;
     }
     .action-btn {
-      background: #c29e5e; border: none; font-size: 22px; font-family: '楷体', serif; font-weight: bold;
+      background: #fafa37; border: none; font-size: 22px; font-family: '楷体', serif; font-weight: bold;
       padding: 8px 0; border-radius: 40px; color: #2b1a0a; box-shadow: 0 8px 0 #6f4f2e, 0 10px 15px black;
       cursor: pointer; transition: 0.08s linear; border: 1px solid #efd39e; letter-spacing: 2px; width: 100%;
     }
@@ -43,10 +43,15 @@
       opacity: 0.5; transform: none; box-shadow: 0 4px 0 #6f4f2e; cursor: not-allowed;
     }
 
+    /* 悔棋按钮：白底 */
+    #undoBtn { background: #ffffff; color: #2b1a0a; }
+    /* 重新开局按钮：浅绿色底 */
+    #restartBtn { background: #ccffcc; color: #2b1a0a; }
+    #undoBtn:active { box-shadow: 0 2px 0 #cccccc, 0 8px 12px rgba(0,0,0,0.2); }
+    #restartBtn:active { box-shadow: 0 2px 0 #99cc99, 0 8px 12px rgba(0,0,0,0.2); }
+
     @media (max-width: 800px), (orientation: portrait) {
-      .right-panel {
-        flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 10px;
-      }
+      .right-panel { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 10px; }
       .turn-indicator { width: 100%; }
       .mode-selector, .difficulty-selector, .action-btn {
         width: auto; flex: 1 1 calc(50% - 10px); min-width: 120px; max-width: 200px;
@@ -68,12 +73,12 @@
       <option value="0">🤖入门</option>
       <option value="1">🤖小白</option>
       <option value="2">🤖菜鸟</option>
-      <option value="3" selected>🤖准初级</option>
-      <option value="4">🤖初级</option>
-      <option value="5">🤖中级</option>
+      <option value="3">🤖准初级</option>
+      <option value="4" selected>🤖初 级</option>
+      <option value="5">🤖中 级</option>
     </select>
-    <button class="action-btn" id="undoBtn">悔棋(剩5步)</button>
-    <button class="action-btn restart-btn" id="restartBtn">新局</button>
+    <button class="action-btn" id="undoBtn">悔棋(剩5次)</button>
+    <button class="action-btn restart-btn" id="restartBtn">重新开局</button>
   </div>
 </div>
 
@@ -99,7 +104,7 @@
   const MAX_UNDO = 5;
 
   let gameMode = 'ai-black';
-  let aiDifficulty = 3;           // 默认准初级
+  let aiDifficulty = 4;           // 默认初级
   let isAIPlaying = false;
 
   let lastMoveInfo = null;
@@ -116,17 +121,21 @@
 
   // ---------- 音效系统 ----------
   let audioCtx = null;
-  function playSound() {
+  function ensureAudio() {
     if (!audioCtx) {
       try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return; }
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function playSound() {
+    ensureAudio();
     const now = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.frequency.value = 800 + Math.random() * 400;
     osc.type = 'sine';
-    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.setValueAtTime(1, now);   // 音量提升50%
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
@@ -134,114 +143,100 @@
     osc.stop(now + 0.08);
   }
 
+  function playRedWinSound() {
+    ensureAudio();
+    const now = audioCtx.currentTime;
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.frequency.value = 523;
+    osc1.type = 'sine';
+    gain1.gain.setValueAtTime(1.5, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.2);
+
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.frequency.value = 784;
+    osc2.type = 'sine';
+    gain2.gain.setValueAtTime(0.6, now + 0.15);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.start(now + 0.15);
+    osc2.stop(now + 0.4);
+  }
+
   const pieceValue = {
     'k':10000, 'a':200, 'b':200, 'n':500, 'r':1000, 'c':800, 'p':100
   };
 
-  // ---------- 增强位置评估 (用于准高级) ----------
+  // ---------- 增强位置评估 (用于初级) ----------
   function getEnhancedPositionBonus(player, type, row, col) {
-    let progression = (player === 'r') ? (9 - row) : row; // 前进值（0底线，9对方底线）
+    let progression = (player === 'r') ? (9 - row) : row;
     let bonus = 0;
     switch (type) {
-      case 'r': // 车
-        if (progression >= 5) { // 过河
-          bonus += 20;
-          if (col === 4) bonus += 20; // 中路车
-          if (col === 0 || col === 8) bonus += 10; // 边车过河也强
-        }
-        // 占据开放线
+      case 'r':
+        if (progression >= 5) { bonus += 20; if (col === 4) bonus += 20; if (col === 0 || col === 8) bonus += 10; }
         if (col >= 3 && col <= 5 && progression < 3) bonus += 8;
         break;
-      case 'n': // 马
+      case 'n':
         if (progression >= 3 && progression <= 6) {
-          if (col >= 3 && col <= 5) bonus += 30; // 中心马
-          else bonus += 15;
-        } else if (col <= 1 || col >= 7) {
-          bonus -= 12; // 边马呆滞
-        }
+          if (col >= 3 && col <= 5) bonus += 30; else bonus += 15;
+        } else if (col <= 1 || col >= 7) bonus -= 12;
         break;
-      case 'c': // 炮
+      case 'c':
         if (progression >= 5) bonus += 12;
-        if (col === 4) bonus += 15; // 中炮
-        if ((col === 1 || col === 7) && progression >= 4) bonus += 10; // 巡河炮
+        if (col === 4) bonus += 15;
+        if ((col === 1 || col === 7) && progression >= 4) bonus += 10;
         break;
-      case 'p': // 兵
-        if (progression >= 5) { // 过河
-          bonus += 35;
-          if (col === 4) bonus += 20;
-          else if (col === 3 || col === 5) bonus += 10;
-        } else {
-          if (col >= 3 && col <= 5 && progression >= 3) bonus += 10; // 中路兵即将过河
-        }
-        break;
-      default:
+      case 'p':
+        if (progression >= 5) { bonus += 35; if (col === 4) bonus += 20; else if (col === 3 || col === 5) bonus += 10; }
+        else { if (col >= 3 && col <= 5 && progression >= 3) bonus += 10; }
         break;
     }
     return bonus;
   }
 
-  // ---------- 将安全评估 (用于准高级) ----------
   function evaluateKingSafety(boardState, color) {
     let kingPos = null;
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const p = boardState[r][c];
-        if (p && p[0] === color && p[1] === 'k') {
-          kingPos = {r, c};
-          break;
-        }
-      }
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      const p = boardState[r][c]; if (p && p[0] === color && p[1] === 'k') { kingPos = {r, c}; break; }
     }
-    if (!kingPos) return -1000; // 将被吃，严重惩罚
-
+    if (!kingPos) return -1000;
     let safety = 0;
     const {r: kr, c: kc} = kingPos;
     const opponent = color === 'r' ? 'b' : 'r';
-    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
-
-    // 检查士象保护
     const protectPieces = ['a', 'b'];
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        if (dr === 0 && dc === 0) continue;
-        const nr = kr + dr, nc = kc + dc;
-        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
-          const p = boardState[nr][nc];
-          if (p && p[0] === color && protectPieces.includes(p[1])) {
-            safety += 20; // 有士象保护
-          }
-        }
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = kr + dr, nc = kc + dc;
+      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+        const p = boardState[nr][nc];
+        if (p && p[0] === color && protectPieces.includes(p[1])) safety += 20;
       }
     }
-
-    // 将暴露在同列威胁下检查
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
     for (let [dx, dy] of dirs) {
-      let r = kr + dx, c = kc + dy;
-      let pieceCount = 0;
+      let r = kr + dx, c = kc + dy, pieceCount = 0;
       while (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
         const p = boardState[r][c];
         if (p) {
           if (p[0] === opponent) {
-            if (p[1] === 'r' && pieceCount === 0) {
-              safety -= 80; // 同列有对方车且无遮挡
-            } else if (p[1] === 'c' && pieceCount === 1) {
-              safety -= 80; // 炮架 + 炮
-            }
-            // 遇到任何对方子，停止检查该方向
+            if (p[1] === 'r' && pieceCount === 0) safety -= 80;
+            else if (p[1] === 'c' && pieceCount === 1) safety -= 80;
             break;
-          } else { // 己方或对方其他子，都算遮挡
-            pieceCount++;
-            if (pieceCount > 1) break; // 多层遮挡，停止
-          }
+          } else { pieceCount++; if (pieceCount > 1) break; }
         }
-        r += dx;
-        c += dy;
+        r += dx; c += dy;
       }
     }
-
     return safety;
   }
 
+  // ---------- 棋盘绘制与逻辑 ----------
   function resizeCanvas() {
     const marginX = 0.6, marginY = 0.6;
     const maxW = window.innerWidth * 0.9, maxH = window.innerHeight * 0.95;
@@ -358,7 +353,7 @@
     const centerY = OFFSET_Y + 4.5*GRID_SIZE;
     const centerX = OFFSET_X + 4*GRID_SIZE;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('  楚 河    　汉 界  ', centerX, centerY);
+    ctx.fillText(' 楚  河    　汉  界 ', centerX, centerY);
     ctx.globalAlpha = 1; ctx.textAlign = 'start';
     ctx.beginPath(); ctx.moveTo(OFFSET_X+3*GRID_SIZE, OFFSET_Y); ctx.lineTo(OFFSET_X+5*GRID_SIZE, OFFSET_Y+2*GRID_SIZE); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(OFFSET_X+5*GRID_SIZE, OFFSET_Y); ctx.lineTo(OFFSET_X+3*GRID_SIZE, OFFSET_Y+2*GRID_SIZE); ctx.stroke();
@@ -397,7 +392,7 @@
     return map[p[0]][p[1]] || '?';
   }
 
-  // ---------- 走法生成、规则检验 ----------
+  // ---------- 走法生成 / 规则 ----------
   function getPieceRawMoves(boardState, row, col, piece) {
     const color = piece[0]; const type = piece[1]; const moves = [];
     if (type==='k') {
@@ -448,12 +443,8 @@
         let nr=row+dx, nc=col+dy, found=false;
         while (nr>=0&&nr<ROWS&&nc>=0&&nc<COLS) {
           const t=boardState[nr][nc];
-          if (!found) {
-            if (!t) moves.push({toX:nr,toY:nc}); else found=true;
-          } else {
-            if (t && t[0]!==color) { moves.push({toX:nr,toY:nc}); break; }
-            else if (t) break;
-          }
+          if (!found) { if (!t) moves.push({toX:nr,toY:nc}); else found=true; }
+          else { if (t && t[0]!==color) { moves.push({toX:nr,toY:nc}); break; } else if (t) break; }
           nr+=dx; nc+=dy;
         }
       }
@@ -524,27 +515,16 @@
 
   function evaluateBoard(boardState, perspective, usePositional = false) {
     let score = 0;
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const p = boardState[r][c];
-        if (!p) continue;
-        const val = pieceValue[p[1]] || 0;
-        let posBonus = 0;
-        if (usePositional && p[1] !== 'k' && p[1] !== 'a' && p[1] !== 'b') {
-          posBonus = getEnhancedPositionBonus(p[0], p[1], r, c);
-        }
-        if (p[0] === perspective) {
-          score += val + posBonus;
-        } else {
-          score -= val + posBonus;
-        }
-      }
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      const p = boardState[r][c]; if (!p) continue;
+      const val = pieceValue[p[1]] || 0;
+      let posBonus = 0;
+      if (usePositional && p[1] !== 'k' && p[1] !== 'a' && p[1] !== 'b') posBonus = getEnhancedPositionBonus(p[0], p[1], r, c);
+      score += p[0] === perspective ? (val + posBonus) : -(val + posBonus);
     }
-    // 将安全评估 (仅当准高级时)
     if (usePositional) {
-      const opponent = perspective === 'r' ? 'b' : 'r';
-      score += evaluateKingSafety(boardState, perspective);
-      score -= evaluateKingSafety(boardState, opponent);
+      const opp = perspective === 'r' ? 'b' : 'r';
+      score += evaluateKingSafety(boardState, perspective) - evaluateKingSafety(boardState, opp);
     }
     return score;
   }
@@ -557,10 +537,10 @@
 
     const killers = killerMoves[currentDepth] || [null, null];
     moves.sort((a,b)=>{
-      const ak = (killers[0]&&a.fromX===killers[0].fromX&&a.fromY===killers[0].fromY&&a.toX===killers[0].toX&&a.toY===killers[0].toY)||
-               (killers[1]&&a.fromX===killers[1].fromX&&a.fromY===killers[1].fromY&&a.toX===killers[1].toX&&a.toY===killers[1].toY);
-      const bk = (killers[0]&&b.fromX===killers[0].fromX&&b.fromY===killers[0].fromY&&b.toX===killers[0].toX&&b.toY===killers[0].toY)||
-               (killers[1]&&b.fromX===killers[1].fromX&&b.fromY===killers[1].fromY&&b.toX===killers[1].toX&&b.toY===killers[1].toY);
+      const ak = killers[0]&&a.fromX===killers[0].fromX&&a.fromY===killers[0].fromY&&a.toX===killers[0].toX&&a.toY===killers[0].toY ||
+                killers[1]&&a.fromX===killers[1].fromX&&a.fromY===killers[1].fromY&&a.toX===killers[1].toX&&a.toY===killers[1].toY;
+      const bk = killers[0]&&b.fromX===killers[0].fromX&&b.fromY===killers[0].fromY&&b.toX===killers[0].toX&&b.toY===killers[0].toY ||
+                killers[1]&&b.fromX===killers[1].fromX&&b.fromY===killers[1].fromY&&b.toX===killers[1].toX&&b.toY===killers[1].toY;
       if (ak && !bk) return -1;
       if (!ak && bk) return 1;
       if (a.targetValue !== b.targetValue) return b.targetValue - a.targetValue;
@@ -626,15 +606,13 @@
 
       let searchDepth = aiDifficulty;
       let usePos = false;
-      if (aiDifficulty === 6) {
-        searchDepth = 3;
-        usePos = true;   // 启用增强评估 (位置+将安全)
-      }
+      if (aiDifficulty === 4) { searchDepth = 3; usePos = true; }
 
       const move = getBestMove(board, color, searchDepth, usePos);
       if (!move) {
         gameOver=true; winner = (color==='r'?'b':'r');
         turnText.innerText = (winner==='r'?'红方胜':'黑方胜');
+        if (winner === 'r') playRedWinSound();
         drawBoard(); isAIPlaying=false; return;
       }
       const { fromX, fromY, toX, toY } = move;
@@ -649,8 +627,12 @@
       for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
         if (board[r][c]&&board[r][c][0]===enemy&&board[r][c][1]==='k') kingAlive=true;
       }
-      if (!kingAlive) { gameOver=true; winner=color; turnText.innerText = (winner==='r'?'红方胜':'黑方胜'); }
-      else { currentPlayer = enemy; turnText.innerText = currentPlayer==='r'?'红方走棋':'黑方走棋'; }
+      if (!kingAlive) {
+        gameOver=true; winner=color; turnText.innerText = (winner==='r'?'红方胜':'黑方胜');
+        if (winner === 'r') playRedWinSound();
+      } else {
+        currentPlayer = enemy; turnText.innerText = currentPlayer==='r'?'红方走棋':'黑方走棋';
+      }
       selectedPiece = null;
 
       setMoveHighlight(fromX, fromY, toX, toY);
@@ -667,6 +649,7 @@
   }
 
   function handleCanvasClick(e) {
+    ensureAudio(); // 激活音频上下文
     if (gameOver) return;
     const isAI = (gameMode==='ai-black'&&currentPlayer==='b')||(gameMode==='ai-red'&&currentPlayer==='r');
     if (isAI) return;
@@ -707,8 +690,12 @@
         for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
           if (board[r][c]&&board[r][c][0]===enemy&&board[r][c][1]==='k') kingAlive=true;
         }
-        if (!kingAlive) { gameOver=true; winner=movingPlayer; turnText.innerText = (winner==='r'?'红方胜':'黑方胜'); }
-        else { currentPlayer = enemy; turnText.innerText = currentPlayer==='r'?'红方走棋':'黑方走棋'; }
+        if (!kingAlive) {
+          gameOver=true; winner=movingPlayer; turnText.innerText = (winner==='r'?'红方胜':'黑方胜');
+          if (winner === 'r') playRedWinSound();
+        } else {
+          currentPlayer = enemy; turnText.innerText = currentPlayer==='r'?'红方走棋':'黑方走棋';
+        }
         selectedPiece = null;
         drawBoard();
 
@@ -755,9 +742,7 @@
   undoBtn.addEventListener('click', undoMove);
   restartBtn.addEventListener('click', restartGame);
   modeSelect.addEventListener('change', (e)=>{ gameMode=e.target.value; restartGame(); });
-  difficultySelect.addEventListener('change', (e)=>{
-    aiDifficulty = parseInt(e.target.value);
-  });
+  difficultySelect.addEventListener('change', (e)=>{ aiDifficulty = parseInt(e.target.value); });
 
   initBoard();
   resizeCanvas();
