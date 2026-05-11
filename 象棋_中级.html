@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>中国象棋【音效版】</title>
+  <title>中国象棋【音效版】· 初二级优化</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
     body {
@@ -67,13 +67,14 @@
       <option value="ai-red">🤖AI执红</option>
       <option value="human">双人对战</option>
     </select>
+    <!-- 难度选项调整：初二级 value=5，中级改为 value=6 -->
     <select id="difficultySelect" class="difficulty-selector">
       <option value="0">🤖入门</option>
       <option value="1">🤖小白</option>
       <option value="2">🤖菜鸟</option>
       <option value="3">🤖准初级</option>
       <option value="4">🤖初 级</option>
-      <option value="5" selected>🤖初二级</option>   <!-- 新增初二级 -->
+      <option value="5" selected>🤖初二级</option>
       <option value="6">🤖中 级</option>
     </select>
     <button class="action-btn" id="undoBtn">悔棋(剩5次)</button>
@@ -103,7 +104,7 @@
   const MAX_UNDO = 5;
 
   let gameMode = 'ai-black';
-  let aiDifficulty = 5;
+  let aiDifficulty = 5;         // 默认初二级
   let isAIPlaying = false;
 
   let lastMoveInfo = null;
@@ -142,44 +143,36 @@
     osc.stop(now + 0.08);
   }
 
- // 鼓掌声（模拟多人鼓掌）
-function playClapSound() {
+  function playClapSound() {
     ensureAudio();
     const now = audioCtx.currentTime;
     const sampleRate = audioCtx.sampleRate;
-    const duration = 5;
-    const clapCount = 10;
-    const clapSpacing = 0.5;
+    const duration = 5, clapCount = 10, clapSpacing = 0.5;
     const bufferSize = Math.floor(sampleRate * duration);
     const noiseBuffer = audioCtx.createBuffer(1, bufferSize, sampleRate);
     const data = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-        data[i] = (Math.random() * 2 - 1) * 0.5;
-    }
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
     for (let i = 0; i < clapCount; i++) {
-        const t = now + i * clapSpacing;
-        const source = audioCtx.createBufferSource();
-        source.buffer = noiseBuffer;
-        const filter = audioCtx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.frequency.value = 1500 + Math.random() * 500;
-        const gain = audioCtx.createGain();
-        gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.7, t + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
-        source.connect(filter);
-        filter.connect(gain);
-        gain.connect(audioCtx.destination);
-        source.start(t);
-        source.stop(t + 0.5);
+      const t = now + i * clapSpacing;
+      const source = audioCtx.createBufferSource();
+      source.buffer = noiseBuffer;
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 1500 + Math.random() * 500;
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.7, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+      source.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+      source.start(t); source.stop(t + 0.5);
     }
-}
+  }
 
   const pieceValue = {
     'k':10000, 'a':200, 'b':200, 'n':500, 'r':1000, 'c':800, 'p':100
   };
 
-  // ---------- 增强评估 ----------
+  // ---------- 基础增强评估（初级用） ----------
   function getEnhancedPositionBonus(player, type, row, col) {
     let progression = (player === 'r') ? (9 - row) : row;
     let bonus = 0;
@@ -206,6 +199,57 @@ function playClapSound() {
     return bonus;
   }
 
+  // ---------- 初二级增强评估（在初级基础上增加战术知识） ----------
+  function getAdvancedPositionBonus(boardState, player, type, row, col) {
+    let progression = (player === 'r') ? (9 - row) : row;
+    let bonus = 0;
+    // 基础部分沿用 Enhanced
+    bonus += getEnhancedPositionBonus(player, type, row, col);
+
+    // 额外战术加分
+    switch (type) {
+      case 'r': // 车：开放线奖励（该列没有己方兵）
+        {
+          let hasOwnPawn = false;
+          for (let r = 0; r < ROWS; r++) {
+            if (boardState[r][col] && boardState[r][col][0] === player && boardState[r][col][1] === 'p') {
+              hasOwnPawn = true;
+              break;
+            }
+          }
+          if (!hasOwnPawn && progression >= 3) bonus += 15; // 开放线车活跃
+        }
+        break;
+      case 'n': // 马：中心额外加分
+        if (row >= 3 && row <= 6 && col >= 3 && col <= 5) bonus += 15;
+        break;
+      case 'c': // 炮：炮架潜力（该线上存在任何其他棋子即视为有架）
+        {
+          let hasMount = false;
+          // 检查行方向
+          for (let c = 0; c < COLS; c++) {
+            if (c !== col && boardState[row][c]) { hasMount = true; break; }
+          }
+          if (!hasMount) {
+            for (let r = 0; r < ROWS; r++) {
+              if (r !== row && boardState[r][col]) { hasMount = true; break; }
+            }
+          }
+          if (hasMount && progression >= 4) bonus += 12;
+        }
+        break;
+      case 'p': // 兵：过河后并排互保
+        if (progression >= 5) {
+          const left = boardState[row][col-1];
+          const right = boardState[row][col+1];
+          if (left && left[0] === player && left[1] === 'p') bonus += 12;
+          if (right && right[0] === player && right[1] === 'p') bonus += 12;
+        }
+        break;
+    }
+    return bonus;
+  }
+
   function evaluateKingSafety(boardState, color) {
     let kingPos = null;
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
@@ -215,15 +259,6 @@ function playClapSound() {
     let safety = 0;
     const {r: kr, c: kc} = kingPos;
     const opponent = color === 'r' ? 'b' : 'r';
-    const protectPieces = ['a', 'b'];
-    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
-      if (dr === 0 && dc === 0) continue;
-      const nr = kr + dr, nc = kc + dc;
-      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
-        const p = boardState[nr][nc];
-        if (p && p[0] === color && protectPieces.includes(p[1])) safety += 20;
-      }
-    }
     const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
     for (let [dx, dy] of dirs) {
       let r = kr + dx, c = kc + dy, pieceCount = 0;
@@ -530,13 +565,20 @@ function playClapSound() {
     return moves;
   }
 
-  function evaluateBoard(boardState, perspective, usePositional = false) {
+  // 评估函数：根据 useAdvanced 决定使用初级还是初二级的位置奖励
+  function evaluateBoard(boardState, perspective, usePositional = false, useAdvanced = false) {
     let score = 0;
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
       const p = boardState[r][c]; if (!p) continue;
       const val = pieceValue[p[1]] || 0;
       let posBonus = 0;
-      if (usePositional && p[1] !== 'k' && p[1] !== 'a' && p[1] !== 'b') posBonus = getEnhancedPositionBonus(p[0], p[1], r, c);
+      if (usePositional && p[1] !== 'k' && p[1] !== 'a' && p[1] !== 'b') {
+        if (useAdvanced) {
+          posBonus = getAdvancedPositionBonus(boardState, p[0], p[1], r, c);
+        } else {
+          posBonus = getEnhancedPositionBonus(p[0], p[1], r, c);
+        }
+      }
       score += p[0] === perspective ? (val + posBonus) : -(val + posBonus);
     }
     if (usePositional) {
@@ -546,11 +588,11 @@ function playClapSound() {
     return score;
   }
 
-  function alphaBeta(boardState, depth, alpha, beta, maximizing, aiColor, currentDepth, usePositional = false) {
+  function alphaBeta(boardState, depth, alpha, beta, maximizing, aiColor, currentDepth, usePos = false, useAdvanced = false) {
     const curColor = maximizing ? aiColor : (aiColor==='r'?'b':'r');
     const moves = getAllValidMoves(boardState, curColor);
     if (moves.length === 0) return maximizing ? -Infinity : Infinity;
-    if (depth === 0) return evaluateBoard(boardState, aiColor, usePositional);
+    if (depth === 0) return evaluateBoard(boardState, aiColor, usePos, useAdvanced);
 
     const killers = killerMoves[currentDepth] || [null, null];
     moves.sort((a,b)=>{
@@ -568,7 +610,7 @@ function playClapSound() {
       let maxEval = -Infinity;
       for (let m of moves) {
         const nb = applyMove(boardState, m.fromX, m.fromY, m.toX, m.toY);
-        const val = alphaBeta(nb, depth-1, alpha, beta, false, aiColor, currentDepth+1, usePositional);
+        const val = alphaBeta(nb, depth-1, alpha, beta, false, aiColor, currentDepth+1, usePos, useAdvanced);
         maxEval = Math.max(maxEval, val); alpha = Math.max(alpha, val);
         if (beta <= alpha) {
           if (m.targetValue===0) {
@@ -584,7 +626,7 @@ function playClapSound() {
       let minEval = Infinity;
       for (let m of moves) {
         const nb = applyMove(boardState, m.fromX, m.fromY, m.toX, m.toY);
-        const val = alphaBeta(nb, depth-1, alpha, beta, true, aiColor, currentDepth+1, usePositional);
+        const val = alphaBeta(nb, depth-1, alpha, beta, true, aiColor, currentDepth+1, usePos, useAdvanced);
         minEval = Math.min(minEval, val); beta = Math.min(beta, val);
         if (beta <= alpha) {
           if (m.targetValue===0) {
@@ -599,21 +641,21 @@ function playClapSound() {
     }
   }
 
-  function getBestMove(boardState, color, depth, usePositional = false) {
+  function getBestMove(boardState, color, depth, usePos = false, useAdvanced = false) {
     initKillers();
     const moves = getAllValidMoves(boardState, color);
     if (moves.length === 0) return null;
     let best = [], bestScore = -Infinity;
     for (let m of moves) {
       const nb = applyMove(boardState, m.fromX, m.fromY, m.toX, m.toY);
-      const score = alphaBeta(nb, depth-1, -Infinity, Infinity, false, color, 0, usePositional);
+      const score = alphaBeta(nb, depth-1, -Infinity, Infinity, false, color, 0, usePos, useAdvanced);
       if (score > bestScore) { bestScore=score; best=[m]; }
       else if (score===bestScore) best.push(m);
     }
     return best[Math.floor(Math.random()*best.length)];
   }
 
-  // AI 移动
+  // AI 移动：初二级 (value=5) 使用深度3+高级评估，中级 (value=6) 使用深度5
   function aiMakeMove(color) {
     if (gameOver || isAIPlaying) return;
     const isAI = (gameMode==='ai-black'&&color==='b')||(gameMode==='ai-red'&&color==='r');
@@ -623,18 +665,25 @@ function playClapSound() {
       if (gameOver) { isAIPlaying=false; return; }
       let searchDepth = aiDifficulty;
       let usePos = false;
+      let useAdvanced = false;
       // 初级：深度3+增强评估
       if (aiDifficulty === 4) {
         searchDepth = 3;
         usePos = true;
       }
-      // 新增初二级：深度4+增强评估，棋力提升约50%，速度更慢
-      else if (aiDifficulty === 6) {
-        searchDepth = 4;
+      // 初二级：深度3 + 高级评估（快速且强悍）
+      else if (aiDifficulty === 5) {
+        searchDepth = 3;
         usePos = true;
+        useAdvanced = true;
+      }
+      // 中级（原 value=5 已改为 6）：深度5层
+      else if (aiDifficulty === 6) {
+        searchDepth = 5;
+        usePos = false;
       }
 
-      const move = getBestMove(board, color, searchDepth, usePos);
+      const move = getBestMove(board, color, searchDepth, usePos, useAdvanced);
       if (!move) {
         gameOver=true; winner = (color==='r'?'b':'r');
         setWinDisplay(winner);
