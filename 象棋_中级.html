@@ -72,8 +72,9 @@
       <option value="1">🤖小白</option>
       <option value="2">🤖菜鸟</option>
       <option value="3">🤖准初级</option>
-      <option value="4" selected>🤖初 级</option>
-      <option value="5">🤖中 级</option>
+      <option value="4">🤖初 级</option>
+      <option value="5" selected>🤖初二级</option>   <!-- 新增初二级 -->
+      <option value="6">🤖中 级</option>
     </select>
     <button class="action-btn" id="undoBtn">悔棋(剩5次)</button>
     <button class="action-btn restart-btn" id="restartBtn">重新开局</button>
@@ -102,7 +103,7 @@
   const MAX_UNDO = 5;
 
   let gameMode = 'ai-black';
-  let aiDifficulty = 4;
+  let aiDifficulty = 5;
   let isAIPlaying = false;
 
   let lastMoveInfo = null;
@@ -146,35 +147,26 @@ function playClapSound() {
     ensureAudio();
     const now = audioCtx.currentTime;
     const sampleRate = audioCtx.sampleRate;
-    const duration = 5;         // 总时长
-    const clapCount = 10;          // 掌声次数
-    const clapSpacing = 0.5;      // 间隔
-
-    // 创建白噪声缓冲区
+    const duration = 5;
+    const clapCount = 10;
+    const clapSpacing = 0.5;
     const bufferSize = Math.floor(sampleRate * duration);
     const noiseBuffer = audioCtx.createBuffer(1, bufferSize, sampleRate);
     const data = noiseBuffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
-        data[i] = (Math.random() * 2 - 1) * 0.5;   // 白噪声
+        data[i] = (Math.random() * 2 - 1) * 0.5;
     }
-
-    // 多次播放噪声，生成连续掌声
     for (let i = 0; i < clapCount; i++) {
         const t = now + i * clapSpacing;
         const source = audioCtx.createBufferSource();
         source.buffer = noiseBuffer;
-
-        // 低通滤波器（让声音更闷，更像手掌）
         const filter = audioCtx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.value = 1500 + Math.random() * 500;
-
-        // 增益包络（快速起振、缓慢衰减）
         const gain = audioCtx.createGain();
         gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.7, t + 0.02);  // 起振
-        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15); // 衰减
-
+        gain.gain.linearRampToValueAtTime(0.7, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
         source.connect(filter);
         filter.connect(gain);
         gain.connect(audioCtx.destination);
@@ -226,7 +218,7 @@ function playClapSound() {
     const protectPieces = ['a', 'b'];
     for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
       if (dr === 0 && dc === 0) continue;
-      const nr = kr + dr, nc = kc + dc; // 修复：正确计算邻居坐标
+      const nr = kr + dr, nc = kc + dc;
       if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
         const p = boardState[nr][nc];
         if (p && p[0] === color && protectPieces.includes(p[1])) safety += 20;
@@ -253,7 +245,7 @@ function playClapSound() {
   // ---------- UI 辅助 ----------
   function setWinDisplay(winColor) {
     if (winColor === 'r') {
-      turnText.innerHTML = '🚩红方胜';
+      turnText.innerHTML = '🚩红方胜 ';
       restartBtn.style.background = '#ffb6c1';
       restartBtn.style.color = '#b22222';
     } else {
@@ -631,7 +623,16 @@ function playClapSound() {
       if (gameOver) { isAIPlaying=false; return; }
       let searchDepth = aiDifficulty;
       let usePos = false;
-      if (aiDifficulty === 4) { searchDepth = 3; usePos = true; }
+      // 初级：深度3+增强评估
+      if (aiDifficulty === 4) {
+        searchDepth = 3;
+        usePos = true;
+      }
+      // 新增初二级：深度4+增强评估，棋力提升约50%，速度更慢
+      else if (aiDifficulty === 6) {
+        searchDepth = 4;
+        usePos = true;
+      }
 
       const move = getBestMove(board, color, searchDepth, usePos);
       if (!move) {
