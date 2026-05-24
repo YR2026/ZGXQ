@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
-  <title>中国象棋【初+/++版】</title>
+  <title>中国象棋【初+/++版·悔棋修复】</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; touch-action: manipulation; }
     body {
@@ -109,16 +109,15 @@
   let highlightTimer = null;
 
   // ---------- 重复局面记录 ----------
-  let stateCount = new Map();   // 记录每种局面出现的次数
+  let stateCount = new Map();
   function getBoardFen() {
-    // 简单序列化棋盘用于比较
     let fen = '';
     for (let r=0; r<ROWS; r++) {
       for (let c=0; c<COLS; c++) {
         fen += board[r][c] ? board[r][c] : '--';
       }
     }
-    fen += currentPlayer; // 加入当前走棋方
+    fen += currentPlayer;
     return fen;
   }
   function updateStateCount() {
@@ -126,9 +125,8 @@
     const cnt = (stateCount.get(fen) || 0) + 1;
     stateCount.set(fen, cnt);
     if (cnt >= 3 && !gameOver) {
-      // 三次重复局面，判和
       gameOver = true;
-      winner = null;  // 和棋
+      winner = null;
       turnText.innerText = '和棋！';
       restartBtn.style.background = '#ffffcc';
       restartBtn.style.color = '#886600';
@@ -138,7 +136,6 @@
   }
   function clearStateCount() {
     stateCount.clear();
-    // 加入初始局面
     const fen = getBoardFen();
     stateCount.set(fen, 1);
   }
@@ -189,7 +186,6 @@
       source.start(t); source.stop(t + 0.5);
     }
   }
-  // 将军音效：短促尖锐的“将”声
   function playGeneralSound() {
     ensureAudio();
     const now = audioCtx.currentTime;
@@ -203,7 +199,6 @@
     gain.connect(audioCtx.destination);
     osc.start(now);
     osc.stop(now + 0.25);
-    // 第二个谐波
     const osc2 = audioCtx.createOscillator();
     const gain2 = audioCtx.createGain();
     osc2.frequency.value = 1800;
@@ -215,7 +210,6 @@
     osc2.start(now);
     osc2.stop(now + 0.2);
   }
-  // 和棋音效：低沉长音
   function playDrawSound() {
     ensureAudio();
     const now = audioCtx.currentTime;
@@ -497,7 +491,7 @@
     return moves;
   }
 
-  // ---------- 增强搜索（静止+杀手+历史+开局）----------
+  // ---------- 增强搜索 ----------
   let globalHistoryTable = new Map();
   const MAX_HIST_VAL = 10000;
 
@@ -688,22 +682,16 @@
     currentPlayer = 'r'; selectedPiece = null; gameOver = false; winner = null;
     history = []; undoCount = 0; updateUndoButton(); resetGameUI(); clearHighlight();
     globalHistoryTable.clear();
-    // 重置重复局面计数
     stateCount.clear();
     const fen = getBoardFen();
     stateCount.set(fen, 1);
   }
 
-  // 通用走棋后处理：更新历史，切换玩家，检测将军和重复
+  // ---------- 走棋后通用处理（不保存历史，只处理将军、切换玩家等） ----------
   function afterMove(movingPlayer, fromX, fromY, toX, toY, captured) {
-    // 更新历史记录（用于悔棋）
-    const boardCopy = board.map(r=>r.map(c=>c));
-    history.push({ board: boardCopy, currentPlayer: movingPlayer });
-    if (history.length > 30) history.shift();
-
     // 更新局面计数
     updateStateCount();
-    if (gameOver) return true; // 已经和棋
+    if (gameOver) return true;
 
     // 检测将军（黑方将红方时播放将军音效）
     if (movingPlayer === 'b') {
@@ -715,7 +703,6 @@
     const enemy = movingPlayer === 'r' ? 'b' : 'r';
     currentPlayer = enemy;
     turnText.innerText = currentPlayer === 'r' ? '红方走棋' : '黑方走棋';
-    // 清除选中
     selectedPiece = null;
     drawBoard();
     // 播放落子音效
@@ -757,10 +744,16 @@
         }
         const fromX = move.fromX, fromY = move.fromY, toX = move.toX, toY = move.toY;
         const captured = board[toX][toY] !== null;
-        const movingPiece = board[fromX][fromY];
+
+        // 【关键】走棋前保存历史
+        const boardCopy = board.map(r=>r.map(c=>c));
+        history.push({ board: boardCopy, currentPlayer });
+        if (history.length > 30) history.shift();
+
         // 执行移动
         board[toX][toY] = board[fromX][fromY];
         board[fromX][fromY] = null;
+
         // 后处理
         const isDraw = afterMove(color, fromX, fromY, toX, toY, captured);
         if (!isDraw) {
@@ -813,9 +806,16 @@
       if (valid) {
         const movingPlayer = currentPlayer;
         const captured = board[row][col] !== null;
+
+        // 【关键】走棋前保存历史
+        const boardCopy = board.map(r=>r.map(c=>c));
+        history.push({ board: boardCopy, currentPlayer });
+        if (history.length > 30) history.shift();
+
         // 执行移动
         board[row][col] = board[sr][sc];
         board[sr][sc] = null;
+
         // 后处理
         const isDraw = afterMove(movingPlayer, sr, sc, row, col, captured);
         if (!isDraw) {
@@ -834,21 +834,36 @@
     drawBoard();
   }
 
+  // ---------- 悔棋：一次性撤销两步 ----------
   function undoMove() {
     if (gameOver || isAIPlaying || aiThinking) return;
-    if (history.length < 2) return;
+    if (history.length < 2) return;      // 至少需要两步才能悔棋
     if (undoCount >= MAX_UNDO) return;
+
+    // 移除最后一条记录（对方走棋前保存的状态）
     history.pop();
-    const playerMove = history.pop();
-    board = playerMove.board.map(r=>r.map(c=>c));
-    currentPlayer = playerMove.currentPlayer;
-    selectedPiece = null; gameOver = false; winner = null;
-    resetGameUI(); undoCount++; updateUndoButton(); clearHighlight(); drawBoard();
-    // 重置重复局面计数器（简单处理：重新计算）
+    // 再取一条，得到我方走棋前保存的状态
+    const last = history.pop();
+    if (!last) return;
+
+    // 恢复棋盘和当前玩家
+    board = last.board.map(row => [...row]);
+    currentPlayer = last.currentPlayer;
+    selectedPiece = null;
+    gameOver = false;
+    winner = null;
+
+    // 刷新界面
+    resetGameUI();
+    undoCount++;
+    updateUndoButton();
+    clearHighlight();
+    drawBoard();
+
+    // 重置重复局面计数器
     stateCount.clear();
     const fen = getBoardFen();
     stateCount.set(fen, 1);
-    // 注意：悔棋后历史记录变化，局面计数可能不准，但简单处理为重新开始计数
   }
 
   function restartGame() {
